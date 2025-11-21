@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invasive Crab Rapid ID</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for a clean, maritime interface */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d2538; /* Deep Ocean Blue */
+            color: #ecf0f1;
+            padding: 1rem;
+        }
+
+        .game-card {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #1a365d; /* Dark Blue Card */
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            min-height: 95vh;
+        }
+
+        .game-area {
+            flex-grow: 1;
+            width: 100%;
+            aspect-ratio: 16 / 9; 
+            background: linear-gradient(to top, #2980b9, #1a365d); /* Blue gradient water */
+            border: 4px solid #34d399;
+            border-radius: 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Styling for the moving crab images */
+        .crab-image {
+            position: absolute;
+            width: 100px; /* Base size */
+            height: 100px;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+            cursor: pointer;
+            transition: transform 0.1s ease-out, border-color 0.2s;
+            border: 3px solid transparent;
+            /* Ensure images fit nicely within their boundary */
+            object-fit: cover; 
+            /* Fallback for broken images */
+            background-color: #333; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.5rem;
+            text-align: center;
+        }
+
+        .crab-image:hover {
+            transform: scale(1.05);
+            z-index: 10;
+        }
+        
+    
+        
+        /* Utility class for quick score feedback */
+        .feedback-win {
+            border-color: #2ecc71 !important;
+            box-shadow: 0 0 15px #2ecc71;
+        }
+        .feedback-lose {
+            border-color: #e74c3c !important;
+            box-shadow: 0 0 15px #e74c3c;
+        }
+
+        /* Responsive adjustments for crab size on smaller screens */
+        @media (max-width: 768px) {
+            .crab-image {
+                width: 75px;
+                height: 75px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-card">
+        <h1 class="text-3xl md:text-4xl font-extrabold text-center mb-6 text-teal-300">
+            Invasive Crab Rapid ID Challenge
+        </h1>
+
+        <!-- Header Panel: Score and Timer -->
+        <div class="flex justify-between items-center bg-gray-800 p-4 rounded-xl shadow-inner mb-4">
+            <div class="text-lg md:text-xl font-bold">
+                Time Left: <span id="timer-display" class="text-red-400">60s</span>
+            </div>
+            <div class="text-xl md:text-2xl font-extrabold">
+                Score: <span id="score-display" class="text-yellow-300">0</span>
+            </div>
+            <div class="text-lg md:text-xl font-bold">
+                Rounds: <span id="round-display" class="text-blue-400">0</span>
+            </div>
+        </div>
+
+        <!-- CONTROL PANEL (Rules and Button) -->
+        <div id="control-panel" class="mb-4 p-4 bg-gray-800 rounded-xl flex flex-col md:flex-row items-center justify-between gap-4">
+            
+            <!-- Button -->
+            <button id="start-restart-btn" class="py-3 px-8 w-full md:w-auto bg-green-500 hover:bg-green-600 rounded-lg text-white font-extrabold shadow-lg transition duration-150 text-xl disabled:opacity-50 disabled:cursor-not-allowed">
+                Start 60 Second Challenge
+            </button>
+
+            <!-- Identification Key / Rules -->
+            <div class="text-center md:text-left text-sm md:text-base">
+                <h3 class="text-base font-bold text-white mb-1">Identification Key (Spines Behind Eyes)</h3>
+                <div class="flex flex-wrap justify-center md:justify-end gap-2 text-xs md:text-sm">
+                    <span class="text-red-400 font-bold">Target EGC: 5 Spines</span>
+                    <span class="text-green-400">Dungeness: 9 Spines</span>
+                    <span class="text-blue-400">Red Rock: 9 Spines</span>
+                    <span class="text-yellow-400">Kelp: 3 Spines</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Area (The Map) -->
+        <div id="game-area" class="game-area">
+            <div id="instructions" class="absolute inset-0 flex items-center justify-center bg-transparent pointer-events-none">
+                <p class="text-2xl font-semibold text-white/50 select-none">
+                    Click 'Start' to begin the rapid identification challenge.
+                </p>
+            </div>
+        </div>
+        
+    </div>
+
+    <script>
+        // --- GAME CONSTANTS ---
+        const GAME_DURATION = 60; // Seconds
+        const NUM_CRABS_PER_ROUND = 4;
+
+        const CRAB_TYPES = [
+            // Target Invasive Species (Only one per round)
+            { 
+                name: 'European Green Crab (EGC)', 
+                isEGC: true, 
+                spines: 5, 
+                // Image URL for European Green Crab
+                imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Carcinus_maenas_1_1800.jpg/150px-Carcinus_maenas_1_1800.jpg',
+                fallbackText: 'EGC 5 Spines'
+            },
+            // Native BC Look-Alikes (Three per round)
+            { 
+                name: 'Dungeness Crab', 
+                isEGC: false, 
+                spines: 9, 
+                // Image URL for Dungeness Crab
+                imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Dungeness_crab_on_shore.jpg/150px-Dungeness_crab_on_shore.jpg',
+                fallbackText: 'Dungeness 9 Spines'
+            },
+            { 
+                name: 'Red Rock Crab', 
+                isEGC: false, 
+                spines: 9, 
+                // Image URL for Red Rock Crab
+                imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Red_rock_crab.jpg/150px-Red_rock_crab.jpg',
+                fallbackText: 'Red Rock 9 Spines'
+            },
+            { 
+                name: 'Kelp Crab', 
+                isEGC: false, 
+                spines: 3, 
+                // Image URL for Kelp Crab
+                imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Pugettia_producta_Monterey_Bay.jpg/150px-Pugettia_producta_Monterey_Bay.jpg',
+                fallbackText: 'Kelp Crab 3 Spines'
+            }
+        ];
+
+        // --- GAME STATE ---
+        let state = {
+            score: 0,
+            rounds: 0,
+            timeLeft: GAME_DURATION,
+            isRunning: false,
+            crabs: [],
+            animationFrameId: null,
+            timerIntervalId: null,
+            lastTime: 0,
+            gameAreaWidth: 0,
+            gameAreaHeight: 0,
+            roundComplete: false, 
+        };
+
+        // --- DOM ELEMENTS ---
+        const gameArea = document.getElementById('game-area');
+        const scoreDisplay = document.getElementById('score-display');
+        const timerDisplay = document.getElementById('timer-display');
+        const roundDisplay = document.getElementById('round-display');
+        const startRestartBtn = document.getElementById('start-restart-btn'); 
+        const instructions = document.getElementById('instructions');
+
+        // --- UTILITY FUNCTIONS ---
+
+        function updateDisplay() {
+            state.timeLeft = Math.max(0, state.timeLeft);
+            scoreDisplay.textContent = state.score;
+            timerDisplay.textContent = `${state.timeLeft.toFixed(0)}s`;
+            roundDisplay.textContent = state.rounds;
+            
+            // Color feedback for score
+            if (state.score > 0) {
+                scoreDisplay.classList.remove('text-red-400', 'text-yellow-300');
+                scoreDisplay.classList.add('text-green-400');
+            } else if (state.score < 0) {
+                scoreDisplay.classList.remove('text-green-400', 'text-yellow-300');
+                scoreDisplay.classList.add('text-red-400');
+            } else {
+                scoreDisplay.classList.remove('text-green-400', 'text-red-400');
+                scoreDisplay.classList.add('text-yellow-300');
+            }
+        }
+
+        // --- GAME LOGIC ---
+
+        function generateCrabData(crabType) {
+            // Recalculate size based on current viewport
+            const crabElSize = window.innerWidth > 768 ? 100 : 75; 
+            
+            // Calculate maximum movable area
+            const maxW = state.gameAreaWidth - crabElSize;
+            const maxH = state.gameAreaHeight - crabElSize;
+            
+            // Random position and velocity
+            return {
+                ...crabType,
+                id: Math.random().toString(36).substring(2, 9),
+                size: crabElSize, // Store size for movement logic
+                x: Math.random() * maxW,
+                y: Math.random() * maxH,
+                vx: (Math.random() - 0.5) * 60, // Velocity X (-30 to 30 px/s)
+                vy: (Math.random() - 0.5) * 60, // Velocity Y (-30 to 30 px/s)
+            };
+        }
+
+        function startRound() {
+            if (!state.isRunning) return;
+            
+            state.rounds++;
+            state.roundComplete = false;
+            
+            // Clear previous crabs
+            gameArea.querySelectorAll('.crab-image').forEach(el => el.remove());
+            state.crabs = [];
+
+            // 1. Select the EGC target
+            const egcType = CRAB_TYPES.find(c => c.isEGC);
+            state.crabs.push(generateCrabData(egcType));
+
+            // 2. Select 3 unique Native look-alikes
+            const nativeTypes = CRAB_TYPES.filter(c => !c.isEGC);
+            const shuffledNatives = nativeTypes.sort(() => 0.5 - Math.random()); 
+            
+            for (let i = 0; i < Math.min(NUM_CRABS_PER_ROUND - 1, nativeTypes.length); i++) {
+                 state.crabs.push(generateCrabData(shuffledNatives[i]));
+            }
+            
+            // Shuffle the final array to randomize placement in the DOM
+            state.crabs.sort(() => 0.5 - Math.random());
+            
+            renderCrabs();
+            updateDisplay();
+        }
+
+        function handleCrabClick(event) {
+            if (!state.isRunning || state.roundComplete) return;
+
+            state.roundComplete = true; // Prevent multiple clicks in the same round
+
+            const crabId = event.currentTarget.dataset.id;
+            const clickedCrab = state.crabs.find(c => c.id === crabId);
+            const crabEl = event.currentTarget;
+
+            if (clickedCrab) {
+                if (clickedCrab.isEGC) {
+                    state.score += 1;
+                    crabEl.classList.add('feedback-win');
+                } else {
+                    state.score -= 1;
+                    crabEl.classList.add('feedback-lose');
+                    // Briefly highlight the correct answer visually
+                    const correctEGC = gameArea.querySelector('.egc-target');
+                    if (correctEGC) {
+                        correctEGC.classList.add('feedback-win');
+                    }
+                }
+
+                updateDisplay();
+
+                // Show feedback briefly before starting the next round
+                setTimeout(() => {
+                    startRound();
+                }, 400); // 400ms delay for visual feedback
+            }
+        }
+
+        function renderCrabs() {
+            gameArea.querySelectorAll('.crab-image').forEach(el => el.remove());
+
+            state.crabs.forEach(crab => {
+                const crabEl = document.createElement('img');
+                crabEl.className = 'crab-image'; 
+                if (crab.isEGC) {
+                    crabEl.classList.add('egc-target');
+                }
+                
+                crabEl.src = crab.imageUrl;
+                crabEl.title = `${crab.name} (${crab.spines} Spines)`;
+                crabEl.alt = crab.fallbackText;
+                crabEl.dataset.id = crab.id;
+                
+                // Add an error handler for failed image loading
+                crabEl.onerror = function() {
+                    // Fallback to text if the image fails to load
+                    this.outerHTML = `<div class="crab-image flex items-center justify-center text-xs ${this.classList.contains('egc-target') ? 'egc-target' : ''}" style="width: ${crab.size}px; height: ${crab.size}px; transform: translate(${crab.x}px, ${crab.y}px);" data-id="${crab.id}" title="${crab.name}">${crab.fallbackText}</div>`;
+                    
+                    // Since outerHTML replaces the element, we must re-attach the listener to the new element
+                    const newEl = gameArea.querySelector(`[data-id="${crab.id}"]`);
+                    if (newEl) {
+                        newEl.addEventListener('click', handleCrabClick);
+                    }
+                };
+
+                // Apply the calculated size
+                crabEl.style.width = `${crab.size}px`;
+                crabEl.style.height = `${crab.size}px`;
+
+                // Initial position setup (using transform for smooth movement)
+                crabEl.style.transform = `translate(${crab.x}px, ${crab.y}px)`;
+                
+                crabEl.addEventListener('click', handleCrabClick);
+                gameArea.appendChild(crabEl);
+            });
+        }
+
+        function animate(timestamp) {
+            if (!state.isRunning) {
+                return;
+            }
+
+            if (state.lastTime === 0) {
+                state.lastTime = timestamp;
+            }
+            const deltaTime = (timestamp - state.lastTime) / 1000; 
+            state.lastTime = timestamp;
+
+            const maxW = state.gameAreaWidth - (state.crabs[0]?.size || 100);
+            const maxH = state.gameAreaHeight - (state.crabs[0]?.size || 100);
+            const friction = 0.999; 
+
+            // Update crab positions
+            state.crabs.forEach(crab => {
+                // 1. Apply velocity
+                crab.x += crab.vx * deltaTime;
+                crab.y += crab.vy * deltaTime;
+                
+                // 2. Boundary detection and bounce
+                let bounced = false;
+                if (crab.x < 0) {
+                    crab.vx *= -1;
+                    crab.x = 0;
+                    bounced = true;
+                } else if (crab.x > maxW) {
+                    crab.vx *= -1;
+                    crab.x = maxW;
+                    bounced = true;
+                }
+
+                if (crab.y < 0) {
+                    crab.vy *= -1;
+                    crab.y = 0;
+                    bounced = true;
+                } else if (crab.y > maxH) {
+                    crab.vy *= -1;
+                    crab.y = maxH;
+                    bounced = true;
+                }
+
+                // 3. Add slight randomization for more organic movement
+                if (bounced || Math.random() < 0.005) { 
+                    crab.vx = (Math.random() - 0.5) * 60;
+                    crab.vy = (Math.random() - 0.5) * 60;
+                }
+                
+                // 4. Apply friction (slowdown)
+                crab.vx *= friction;
+                crab.vy *= friction;
+                
+                // 5. Update DOM position
+                const crabEl = gameArea.querySelector(`[data-id="${crab.id}"]`);
+                if (crabEl) {
+                    // Use CSS transform for performance
+                    crabEl.style.transform = `translate(${crab.x}px, ${crab.y}px)`;
+                }
+            });
+
+            state.animationFrameId = requestAnimationFrame(animate);
+        }
+
+        function startGame() {
+            // Hide instructions
+            instructions.classList.add('hidden');
+
+            // Update button state
+            startRestartBtn.disabled = true;
+            startRestartBtn.textContent = "Game In Progress...";
+            startRestartBtn.classList.remove('bg-green-500', 'hover:bg-green-600', 'bg-teal-600', 'hover:bg-teal-700');
+            startRestartBtn.classList.add('bg-gray-500');
+            
+            // Re-measure dimensions
+            const rect = gameArea.getBoundingClientRect();
+            state.gameAreaWidth = rect.width;
+            state.gameAreaHeight = rect.height;
+
+            // Reset state
+            state.score = 0;
+            state.rounds = 0;
+            state.timeLeft = GAME_DURATION;
+            state.isRunning = true;
+            state.lastTime = 0;
+
+            updateDisplay();
+            startRound(); // Start the first round
+
+            // Clear any existing intervals/frames before starting new ones
+            if (state.timerIntervalId) clearInterval(state.timerIntervalId);
+            if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+
+            // Start the main animation loop
+            state.animationFrameId = requestAnimationFrame(animate);
+
+            // Start the countdown timer
+            state.timerIntervalId = setInterval(() => {
+                state.timeLeft -= 1;
+                updateDisplay();
+
+                if (state.timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            state.isRunning = false;
+            clearInterval(state.timerIntervalId);
+            cancelAnimationFrame(state.animationFrameId);
+
+            // Clear the game area of moving crabs
+            gameArea.querySelectorAll('.crab-image').forEach(el => el.remove());
+            
+            // Show instructions/end message
+            instructions.classList.remove('hidden');
+            instructions.querySelector('p').innerHTML = `
+                TIME UP! Final Score: <span class="font-bold">${state.score}</span> over ${state.rounds} rounds.
+                <br>
+                Click 'Play Again!' to restart.
+            `;
+
+
+            // Enable and update the button for replay
+            startRestartBtn.disabled = false;
+            startRestartBtn.classList.remove('bg-gray-500');
+            startRestartBtn.classList.add('bg-teal-600', 'hover:bg-teal-700');
+            startRestartBtn.innerHTML = `
+                Play Again! <span class="font-normal text-sm ml-2">(${state.rounds} Rounds, Score: ${state.score})</span>
+            `;
+        }
+        
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initial dimension calculation (needed for responsive crab generation)
+            const rect = gameArea.getBoundingClientRect();
+            state.gameAreaWidth = rect.width;
+            state.gameAreaHeight = rect.height;
+            
+            // Attach the click handler to the start/restart button
+            startRestartBtn.addEventListener('click', startGame);
+
+            updateDisplay();
+        });
+
+        // Handle resizing to update game bounds
+        window.addEventListener('resize', () => {
+            const rect = gameArea.getBoundingClientRect();
+            state.gameAreaWidth = rect.width;
+            state.gameAreaHeight = rect.height;
+        });
+
+    </script>
+</body>
+</html>
